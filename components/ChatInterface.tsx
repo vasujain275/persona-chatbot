@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Send, Trash, Loader2 } from "lucide-react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -13,18 +13,30 @@ import { Badge } from "@/components/ui/badge";
 const HITESH_USERNAME = "hiteshchoudhary";
 const PIYUSH_USERNAME = "piyushgarg-dev";
 
+// Types
+interface Message {
+  role: string;
+  content: string;
+  persona?: string;
+}
+
+interface ThinkingStep {
+  step: string;
+  content: string;
+}
+
 export default function ChatInterface() {
   const [activePerson, setActivePerson] = useState("hitesh");
   const [userMessage, setUserMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [conversation, setConversation] = useState([]);
-  const [thinking, setThinking] = useState("");
+  const [conversation, setConversation] = useState<Message[]>([]);
+  const [thinking, setThinking] = useState<ThinkingStep | null>(null);
   const [profileData, setProfileData] = useState({
     hitesh: { name: "Hitesh Choudhary", avatar: "" },
     piyush: { name: "Piyush Garg", avatar: "" },
   });
 
-  const messagesEndRef = useRef(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch GitHub profile data
   useEffect(() => {
@@ -65,12 +77,12 @@ export default function ChatInterface() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [conversation, thinking]);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userMessage.trim()) return;
 
     // Add user message to conversation
-    const newMessage = { role: "user", content: userMessage };
+    const newMessage: Message = { role: "user", content: userMessage };
     setConversation((prev) => [...prev, newMessage]);
     const messageToSend = userMessage;
     setUserMessage("");
@@ -80,46 +92,36 @@ export default function ChatInterface() {
       // Call the appropriate API endpoint based on active persona
       const endpoint = `/api/chat/${activePerson}`;
 
-      // This would connect to your API endpoint in a production app
-      // Here we're simulating the thinking steps
-      let inProgress = true;
-      let stepCount = 1;
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: [...conversation, newMessage],
+        }),
+      });
 
-      // Simulate the thinking process (in the real app this would come from the API)
-      while (inProgress && stepCount <= 3) {
-        setThinking(
-          `Step ${stepCount}: ${
-            stepCount === 1
-              ? "Analyzing query..."
-              : stepCount === 2
-                ? "Formulating response..."
-                : "Validating answer..."
-          }`,
-        );
-
-        // Wait for a bit to simulate API call
-        await new Promise((r) => setTimeout(r, 1000));
-        stepCount++;
-
-        if (stepCount > 3) inProgress = false;
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      // Final response
-      setThinking("");
-      const persona =
-        activePerson === "hitesh"
-          ? "Hanji, kaise ho aap? 😊 Main Hitesh bol raha hoon!"
-          : "Hey there! Piyush here. How can I help you today?";
+      const data = await response.json();
 
+      // Display each thinking step
+      for (let i = 0; i < data.steps.length - 1; i++) {
+        setThinking(data.steps[i]);
+        // Wait for a moment to show each thinking step
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+
+      // Clear thinking and add final response to conversation
+      setThinking(null);
       setConversation((prev) => [
         ...prev,
         {
           role: "assistant",
-          content:
-            persona +
-            " " +
-            messageToSend.substring(0, 20) +
-            "... is an interesting question!",
+          content: data.finalResponse,
           persona: activePerson,
         },
       ]);
@@ -134,7 +136,7 @@ export default function ChatInterface() {
       ]);
     } finally {
       setIsLoading(false);
-      setThinking("");
+      setThinking(null);
     }
   };
 
@@ -256,11 +258,12 @@ export default function ChatInterface() {
                         className="text-xs bg-yellow-100 dark:bg-yellow-900"
                       >
                         <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                        Thinking
+                        {thinking.step.charAt(0).toUpperCase() +
+                          thinking.step.slice(1)}
                       </Badge>
                     </div>
                     <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
-                      {thinking}
+                      {thinking.content}
                     </p>
                   </div>
                 </div>
